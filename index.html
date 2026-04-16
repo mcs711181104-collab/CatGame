@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <!-- 針對手機最佳化，防止意外縮放 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>貓咪梳毛大挑戰</title>
+  
+  <!-- 載入 Tailwind CSS (排版與樣式) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 載入 React 相關套件 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- 載入 Babel 以解析 JSX 語法 -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 遊戲必要的樣式與動畫 */
+    body {
+      margin: 0;
+      touch-action: none; /* 防止手機下拉更新畫面 */
+      background-color: #f5f5f4; /* stone-100 */
+    }
+    
+    @keyframes scatterHair {
+      0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); opacity: 0; }
+    }
+    
+    .hair-particle {
+      animation: scatterHair 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+  </style>
+</head>
+<body>
+  <!-- 遊戲會渲染在這裡 -->
+  <div id="root"></div>
+
+  <!-- 遊戲的主程式碼 -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // === 你的三花貓寫死圖片 ===
+    // 確保這兩張照片檔名正確，並和這個 HTML 檔案放在同一個資料夾
+    const DEFAULT_AWAY_URL = "./IMG_1123.jpg"; 
+    const DEFAULT_LOOKING_URL = "./IMG_2708.jpg"; 
+
+    const COMB_EMOJI = "🪮";
+    const HAIR_COLORS = ['#ffffff', '#fca311', '#2b2d42']; 
+
+    function App() {
+      const [gameState, setGameState] = useState('start');
+      const [catState, setCatState] = useState('away');
+      const [score, setScore] = useState(0);
+      const [hairs, setHairs] = useState([]);
+      const [combPos, setCombPos] = useState({ x: -100, y: -100 });
+      const [isCombing, setIsCombing] = useState(false);
+      
+      const containerRef = useRef(null);
+      const scoreRef = useRef(0);
+      const catStateRef = useRef('away');
+
+      useEffect(() => {
+        scoreRef.current = score;
+        catStateRef.current = catState;
+      }, [score, catState]);
+
+      useEffect(() => {
+        if (gameState !== 'playing') return;
+
+        let timeoutId;
+
+        const scheduleNextState = () => {
+          if (catState === 'away') {
+            const time = Math.random() * 2000 + 2000;
+            timeoutId = setTimeout(() => {
+              setCatState('warning');
+            }, time);
+          } else if (catState === 'warning') {
+            const time = Math.random() * 300 + 500;
+            timeoutId = setTimeout(() => {
+              setCatState('looking');
+            }, time);
+          } else if (catState === 'looking') {
+            const time = Math.random() * 1500 + 1500;
+            timeoutId = setTimeout(() => {
+              setCatState('away');
+            }, time);
+          }
+        };
+
+        scheduleNextState();
+
+        return () => clearTimeout(timeoutId);
+      }, [gameState, catState]);
+
+      const handlePointerDown = (e) => {
+        if (gameState !== 'playing') return;
+        setIsCombing(true);
+        updateCombPosition(e);
+        checkInteraction(e);
+      };
+
+      const handlePointerMove = (e) => {
+        if (gameState !== 'playing' || !isCombing) return;
+        updateCombPosition(e);
+        checkInteraction(e);
+      };
+
+      const handlePointerUp = () => {
+        setIsCombing(false);
+      };
+
+      const updateCombPosition = (e) => {
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        
+        if (containerRef.current && clientX && clientY) {
+          const rect = containerRef.current.getBoundingClientRect();
+          setCombPos({
+            x: clientX - rect.left,
+            y: clientY - rect.top,
+          });
+        }
+      };
+
+      const checkInteraction = useCallback((e) => {
+        if (catStateRef.current === 'looking') {
+          setGameState('gameover');
+          setIsCombing(false);
+          return;
+        }
+
+        if (Math.random() > 0.4) {
+          setScore(s => s + 1);
+          spawnHair(e);
+        }
+      }, []);
+
+      const spawnHair = (e) => {
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        
+        if (!clientX || !clientY || !containerRef.current) return;
+        
+        const rect = containerRef.current.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+
+        const hairCount = Math.floor(Math.random() * 3) + 2;
+        const newHairs = Array.from({ length: hairCount }).map(() => ({
+          id: Date.now() + Math.random(),
+          x: x,
+          y: y,
+          tx: `${(Math.random() - 0.5) * 200}px`, 
+          ty: `${Math.random() * 150 + 50}px`, 
+          rot: `${Math.random() * 720 - 360}deg`,
+          color: HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)],
+          width: `${Math.random() * 15 + 10}px`,
+        }));
+
+        setHairs(prev => [...prev, ...newHairs]);
+
+        setTimeout(() => {
+          setHairs(prev => prev.filter(h => !newHairs.find(nh => nh.id === h.id)));
+        }, 800);
+      };
+
+      const startGame = () => {
+        setScore(0);
+        setGameState('playing');
+        setCatState('away');
+        setHairs([]);
+        setIsCombing(false);
+      };
+
+      return (
+        <div 
+          ref={containerRef}
+          className="relative w-full h-screen max-w-md mx-auto bg-stone-100 overflow-hidden touch-none select-none shadow-2xl"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          {/* 分數顯示 */}
+          <div className="absolute top-4 left-6 z-10 text-6xl font-black text-white drop-shadow-md" style={{ WebkitTextStroke: '2px #666' }}>
+            {score}
+          </div>
+
+          {/* 驚嘆號警告 */}
+          {catState === 'warning' && gameState === 'playing' && (
+            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-20 text-7xl font-bold text-red-500 animate-bounce drop-shadow-lg">
+              ❗
+            </div>
+          )}
+
+          {/* 貓咪圖片區 */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
+            <img 
+              src={catState === 'looking' ? DEFAULT_LOOKING_URL : DEFAULT_AWAY_URL} 
+              alt="Cat" 
+              className="w-full h-full object-contain transition-transform duration-200"
+              style={{
+                transform: catState === 'looking' ? 'scale(1.05)' : 'scale(1)'
+              }}
+            />
+          </div>
+
+          {/* 梳子跟隨游標/手指 */}
+          {isCombing && gameState === 'playing' && (
+            <div 
+              className="absolute z-30 text-6xl pointer-events-none drop-shadow-xl"
+              style={{ 
+                left: combPos.x, 
+                top: combPos.y,
+                transform: 'translate(-20%, -80%) rotate(-30deg)'
+              }}
+            >
+              {COMB_EMOJI}
+            </div>
+          )}
+
+          {/* 飄落的貓毛 */}
+          {hairs.map(hair => (
+            <div 
+              key={hair.id}
+              className="hair-particle absolute z-20 pointer-events-none rounded-full shadow-sm"
+              style={{
+                left: hair.x,
+                top: hair.y,
+                width: hair.width,
+                height: '3px',
+                backgroundColor: hair.color,
+                '--tx': hair.tx,
+                '--ty': hair.ty,
+                '--rot': hair.rot,
+              }}
+            />
+          ))}
+
+          {/* UI 覆蓋層 */}
+          {gameState !== 'playing' && (
+            <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center z-50 p-6 text-center backdrop-blur-sm">
+              {gameState === 'start' ? (
+                <React.Fragment>
+                  <h1 className="text-4xl font-black text-white mb-4 tracking-wider">梳毛大挑戰</h1>
+                  <p className="text-white/90 mb-8 max-w-xs text-sm leading-relaxed">
+                    趁貓咪翻肚肚時，<br/>按住螢幕並滑動來幫牠梳毛。<br/><br/>
+                    如果牠轉過來盯著你看，<br/><strong className="text-red-400 text-lg">必須立刻停手（手離開螢幕）</strong><br/>否則遊戲就結束啦！
+                  </p>
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <h1 className="text-5xl font-black text-red-500 mb-2">被抓到了！</h1>
+                  <p className="text-2xl text-white mb-8 font-bold">總共梳了 {score} 下</p>
+                </React.Fragment>
+              )}
+              
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startGame();
+                }}
+                className="px-10 py-4 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-2xl font-black rounded-full shadow-lg hover:scale-105 active:scale-95 transition-transform"
+              >
+                {gameState === 'start' ? '開始梳毛' : '再試一次'}
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
